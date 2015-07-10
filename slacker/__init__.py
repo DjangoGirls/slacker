@@ -99,6 +99,13 @@ class Users(BaseAPI):
         members = self.list().body['members']
         return get_item_id_by_name(members, user_name)
 
+    def invite(self, email, first_name):
+        return self.post('users.admin.invite', params={
+            'email': email,
+            'first_name': first_name,
+            'set_active': True
+        })
+
 
 class Groups(BaseAPI):
     def create(self, name):
