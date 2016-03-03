@@ -20,11 +20,13 @@ from slacker.utils import get_item_id_by_name
 
 
 API_BASE_URL = 'https://slack.com/api/{api}'
+DEFAULT_TIMEOUT = 10
 
 
 __all__ = ['Error', 'Response', 'BaseAPI', 'API', 'Auth', 'Users', 'Groups',
            'Channels', 'Chat', 'IM', 'IncomingWebhook', 'Search', 'Files',
-           'Stars', 'Emoji', 'Presence', 'RTM', 'Team', 'OAuth', 'Slacker']
+           'Stars', 'Emoji', 'Presence', 'RTM', 'Team', 'Reactions', 'Pins',
+           'UserGroups', 'UserGroupsUsers', 'MPIM', 'OAuth', 'DND', 'Slacker']
 
 
 class Error(Exception):
@@ -40,17 +42,19 @@ class Response(object):
 
 
 class BaseAPI(object):
-    def __init__(self, token=None):
+    def __init__(self, token=None, timeout=DEFAULT_TIMEOUT):
         self.token = token
+        self.timeout = timeout
 
     def _request(self, method, api, **kwargs):
         if self.token:
             kwargs.setdefault('params', {})['token'] = self.token
 
         response = method(API_BASE_URL.format(api=api),
+                          timeout=self.timeout,
                           **kwargs)
 
-        assert response.status_code == 200
+        response.raise_for_status()
 
         response = Response(response.text)
         if not response.successful:
@@ -82,8 +86,8 @@ class Users(BaseAPI):
     def info(self, user):
         return self.get('users.info', params={'user': user})
 
-    def list(self):
-        return self.get('users.list')
+    def list(self, presence=False):
+        return self.get('users.list', params={'presence': int(presence)})
 
     def set_active(self):
         return self.post('users.setActive')
@@ -93,7 +97,7 @@ class Users(BaseAPI):
 
     def set_presence(self, presence):
         assert presence in Presence.TYPES, 'Invalid presence type'
-        return self.post('users.setPresence', params={'presence': presence})
+        return self.post('users.setPresence', data={'presence': presence})
 
     def get_user_id(self, user_name):
         members = self.list().body['members']
@@ -109,10 +113,10 @@ class Users(BaseAPI):
 
 class Groups(BaseAPI):
     def create(self, name):
-        return self.post('groups.create', params={'name': name})
+        return self.post('groups.create', data={'name': name})
 
     def create_child(self, channel):
-        return self.post('groups.createChild', params={'channel': channel})
+        return self.post('groups.createChild', data={'channel': channel})
 
     def info(self, channel):
         return self.get('groups.info', params={'channel': channel})
@@ -134,46 +138,46 @@ class Groups(BaseAPI):
 
     def invite(self, channel, user):
         return self.post('groups.invite',
-                         params={'channel': channel, 'user': user})
+                         data={'channel': channel, 'user': user})
 
     def kick(self, channel, user):
         return self.post('groups.kick',
-                         params={'channel': channel, 'user': user})
+                         data={'channel': channel, 'user': user})
 
     def leave(self, channel):
-        return self.post('groups.leave', params={'channel': channel})
+        return self.post('groups.leave', data={'channel': channel})
 
     def mark(self, channel, ts):
-        return self.post('groups.mark', params={'channel': channel, 'ts': ts})
+        return self.post('groups.mark', data={'channel': channel, 'ts': ts})
 
     def rename(self, channel, name):
         return self.post('groups.rename',
-                         params={'channel': channel, 'name': name})
+                         data={'channel': channel, 'name': name})
 
     def archive(self, channel):
-        return self.post('groups.archive', params={'channel': channel})
+        return self.post('groups.archive', data={'channel': channel})
 
     def unarchive(self, channel):
-        return self.post('groups.unarchive', params={'channel': channel})
+        return self.post('groups.unarchive', data={'channel': channel})
 
     def open(self, channel):
-        return self.post('groups.open', params={'channel': channel})
+        return self.post('groups.open', data={'channel': channel})
 
     def close(self, channel):
-        return self.post('groups.close', params={'channel': channel})
+        return self.post('groups.close', data={'channel': channel})
 
     def set_purpose(self, channel, purpose):
         return self.post('groups.setPurpose',
-                         params={'channel': channel, 'purpose': purpose})
+                         data={'channel': channel, 'purpose': purpose})
 
     def set_topic(self, channel, topic):
         return self.post('groups.setTopic',
-                         params={'channel': channel, 'topic': topic})
+                         data={'channel': channel, 'topic': topic})
 
 
 class Channels(BaseAPI):
     def create(self, name):
-        return self.post('channels.create', params={'name': name})
+        return self.post('channels.create', data={'name': name})
 
     def info(self, channel):
         return self.get('channels.info', params={'channel': channel})
@@ -183,51 +187,52 @@ class Channels(BaseAPI):
                         params={'exclude_archived': exclude_archived})
 
     def history(self, channel, latest=None, oldest=None, count=None,
-                inclusive=None):
+                inclusive=False, unreads=False):
         return self.get('channels.history',
                         params={
                             'channel': channel,
                             'latest': latest,
                             'oldest': oldest,
                             'count': count,
-                            'inclusive': inclusive
+                            'inclusive': int(inclusive),
+                            'unreads': int(unreads)
                         })
 
     def mark(self, channel, ts):
         return self.post('channels.mark',
-                         params={'channel': channel, 'ts': ts})
+                         data={'channel': channel, 'ts': ts})
 
     def join(self, name):
-        return self.post('channels.join', params={'name': name})
+        return self.post('channels.join', data={'name': name})
 
     def leave(self, channel):
-        return self.post('channels.leave', params={'channel': channel})
+        return self.post('channels.leave', data={'channel': channel})
 
     def invite(self, channel, user):
         return self.post('channels.invite',
-                         params={'channel': channel, 'user': user})
+                         data={'channel': channel, 'user': user})
 
     def kick(self, channel, user):
         return self.post('channels.kick',
-                         params={'channel': channel, 'user': user})
+                         data={'channel': channel, 'user': user})
 
     def rename(self, channel, name):
         return self.post('channels.rename',
-                         params={'channel': channel, 'name': name})
+                         data={'channel': channel, 'name': name})
 
     def archive(self, channel):
-        return self.post('channels.archive', params={'channel': channel})
+        return self.post('channels.archive', data={'channel': channel})
 
     def unarchive(self, channel):
-        return self.post('channels.unarchive', params={'channel': channel})
+        return self.post('channels.unarchive', data={'channel': channel})
 
     def set_purpose(self, channel, purpose):
         return self.post('channels.setPurpose',
-                         params={'channel': channel, 'purpose': purpose})
+                         data={'channel': channel, 'purpose': purpose})
 
     def set_topic(self, channel, topic):
         return self.post('channels.setTopic',
-                         params={'channel': channel, 'topic': topic})
+                         data={'channel': channel, 'topic': topic})
 
     def get_channel_id(self, channel_name):
         channels = self.list().body['channels']
@@ -235,17 +240,18 @@ class Channels(BaseAPI):
 
 
 class Chat(BaseAPI):
-    def post_message(self, channel, text, username=None, as_user=None, parse=None,
-                     link_names=None, attachments=None, unfurl_links=None,
-                     unfurl_media=None, icon_url=None, icon_emoji=None):
-       
+    def post_message(self, channel, text, username=None, as_user=None,
+                     parse=None, link_names=None, attachments=None,
+                     unfurl_links=None, unfurl_media=None, icon_url=None,
+                     icon_emoji=None):
+
         # Ensure attachments are json encoded
         if attachments:
             if isinstance(attachments, list):
                 attachments = json.dumps(attachments)
 
         return self.post('chat.postMessage',
-                         params={
+                         data={
                              'channel': channel,
                              'text': text,
                              'username': username,
@@ -260,11 +266,11 @@ class Chat(BaseAPI):
                          })
 
     def update(self, channel, ts, text):
-        self.post('chat.update',
-                  params={'channel': channel, 'ts': ts, 'text': text})
+        return self.post('chat.update',
+                         data={'channel': channel, 'ts': ts, 'text': text})
 
     def delete(self, channel, ts):
-        self.post('chat.delete', params={'channel': channel, 'ts': ts})
+        return self.post('chat.delete', data={'channel': channel, 'ts': ts})
 
 
 class IM(BaseAPI):
@@ -283,13 +289,42 @@ class IM(BaseAPI):
                         })
 
     def mark(self, channel, ts):
-        return self.post('im.mark', params={'channel': channel, 'ts': ts})
+        return self.post('im.mark', data={'channel': channel, 'ts': ts})
 
     def open(self, user):
-        return self.post('im.open', params={'user': user})
+        return self.post('im.open', data={'user': user})
 
     def close(self, channel):
-        return self.post('im.close', params={'channel': channel})
+        return self.post('im.close', data={'channel': channel})
+
+
+class MPIM(BaseAPI):
+    def open(self, users):
+        if isinstance(users, (tuple, list)):
+            users = ','.join(users)
+
+        return self.post('mpim.open', data={'user': users})
+
+    def close(self, channel):
+        return self.post('mpim.close', data={'channel': channel})
+
+    def mark(self, channel, ts):
+        return self.post('mpim.mark', data={'channel': channel, 'ts': ts})
+
+    def list(self):
+        return self.get('mpim.list')
+
+    def history(self, channel, latest=None, oldest=None, inclusive=False,
+                count=None, unreads=False):
+        return self.get('mpim.history',
+                        params={
+                            'channel': channel,
+                            'latest': latest,
+                            'oldest': oldest,
+                            'inclusive': int(inclusive),
+                            'count': count,
+                            'unreads': int(unreads)
+                        })
 
 
 class Search(BaseAPI):
@@ -354,7 +389,7 @@ class Files(BaseAPI):
                 channels = ','.join(channels)
 
             return self.post('files.upload',
-                             params={
+                             data={
                                  'content': content,
                                  'filetype': filetype,
                                  'filename': filename,
@@ -365,13 +400,35 @@ class Files(BaseAPI):
                              files={'file': f})
 
     def delete(self, file_):
-        return self.post('files.delete', params={'file': file_})
+        return self.post('files.delete', data={'file': file_})
 
 
 class Stars(BaseAPI):
+    def add(self, file_=None, file_comment=None, channel=None, timestamp=None):
+        assert file_ or file_comment or channel
+
+        return self.post('stars.add',
+                         data={
+                             'file': file_,
+                             'file_comment': file_comment,
+                             'channel': channel,
+                             'timestamp': timestamp
+                         })
+    
     def list(self, user=None, count=None, page=None):
         return self.get('stars.list',
                         params={'user': user, 'count': count, 'page': page})
+    
+    def remove(self, file_=None, file_comment=None, channel=None, timestamp=None):
+        assert file_ or file_comment or channel
+
+        return self.post('stars.remove',
+                         data={
+                             'file': file_,
+                             'file_comment': file_comment,
+                             'channel': channel,
+                             'timestamp': timestamp
+                         })
 
 
 class Emoji(BaseAPI):
@@ -386,7 +443,7 @@ class Presence(BaseAPI):
 
     def set(self, presence):
         assert presence in Presence.TYPES, 'Invalid presence type'
-        return self.post('presence.set', params={'presence': presence})
+        return self.post('presence.set', data={'presence': presence})
 
 
 class RTM(BaseAPI):
@@ -403,10 +460,212 @@ class Team(BaseAPI):
                         params={'count': count, 'page': page})
 
 
+class Reactions(BaseAPI):
+    def add(self, name, file_=None, file_comment=None, channel=None,
+            timestamp=None):
+        # One of file, file_comment, or the combination of channel and timestamp
+        # must be specified
+        assert (file_ or file_comment) or (channel and timestamp)
+
+        return self.post('reactions.add',
+                         data={
+                             'name': name,
+                             'file': file_,
+                             'file_comment': file_comment,
+                             'channel': channel,
+                             'timestamp': timestamp,
+                         })
+
+    def get(self, file_=None, file_comment=None, channel=None, timestamp=None,
+            full=None):
+        return super(Reactions, self).get('reactions.get',
+                                          params={
+                                              'file': file_,
+                                              'file_comment': file_comment,
+                                              'channel': channel,
+                                              'timestamp': timestamp,
+                                              'full': full,
+                                          })
+
+    def list(self, user=None, full=None, count=None, page=None):
+        return super(Reactions, self).get('reactions.list',
+                                          params={
+                                              'user': user,
+                                              'full': full,
+                                              'count': count,
+                                              'page': page,
+                                          })
+
+    def remove(self, name, file_=None, file_comment=None, channel=None,
+               timestamp=None):
+        # One of file, file_comment, or the combination of channel and timestamp
+        # must be specified
+        assert (file_ or file_comment) or (channel and timestamp)
+
+        return self.post('reactions.remove',
+                         data={
+                             'name': name,
+                             'file': file_,
+                             'file_comment': file_comment,
+                             'channel': channel,
+                             'timestamp': timestamp,
+                         })
+
+
+class Pins(BaseAPI):
+    def add(self, channel, file_=None, file_comment=None, timestamp=None):
+        # One of file, file_comment, or timestamp must also be specified
+        assert file_ or file_comment or timestamp
+
+        return self.post('pins.add',
+                         data={
+                             'channel': channel,
+                             'file': file_,
+                             'file_comment': file_comment,
+                             'timestamp': timestamp,
+                         })
+
+    def remove(self, channel, file_=None, file_comment=None, timestamp=None):
+        # One of file, file_comment, or timestamp must also be specified
+        assert file_ or file_comment or timestamp
+
+        return self.post('pins.remove',
+                         data={
+                             'channel': channel,
+                             'file': file_,
+                             'file_comment': file_comment,
+                             'timestamp': timestamp,
+                         })
+
+    def list(self, channel):
+        return self.get('pins.list', params={'channel': channel})
+
+
+class UserGroupsUsers(BaseAPI):
+    def list(self, usergroup, include_disabled=None):
+        if isinstance(include_disabled, bool):
+            include_disabled = int(include_disabled)
+
+        return self.get('usergroups.users.list', params={
+            'usergroup': usergroup,
+            'include_disabled': include_disabled,
+        })
+
+    def update(self, usergroup, users, include_count=None):
+        if isinstance(users, (tuple, list)):
+            users = ','.join(users)
+
+        if isinstance(include_count, bool):
+            include_count = int(include_count)
+
+        return self.post('usergroups.users.update', data={
+            'usergroup': usergroup,
+            'users': users,
+            'include_count': include_count,
+        })
+
+
+class UserGroups(BaseAPI):
+    def __init__(self, *args, **kwargs):
+        super(UserGroups, self).__init__(*args, **kwargs)
+        self._users = UserGroupsUsers(*args, **kwargs)
+
+    @property
+    def users(self):
+        return self._users
+
+    def list(self, include_disabled=None, include_count=None, include_users=None):
+        if isinstance(include_disabled, bool):
+            include_disabled = int(include_disabled)
+
+        if isinstance(include_count, bool):
+            include_count = int(include_count)
+
+        if isinstance(include_users, bool):
+            include_users = int(include_users)
+
+        return self.get('usergroups.list', params={
+            'include_disabled': include_disabled,
+            'include_count': include_count,
+            'include_users': include_users,
+        })
+
+    def create(self, name, handle=None, description=None, channels=None,
+               include_count=None):
+        if isinstance(channels, (tuple, list)):
+            channels = ','.join(channels)
+
+        if isinstance(include_count, bool):
+            include_count = int(include_count)
+
+        return self.post('usergroups.create', data={
+            'name': name,
+            'handle': handle,
+            'description': description,
+            'channels': channels,
+            'include_count': include_count,
+        })
+
+    def update(self, usergroup, name=None, handle=None, description=None,
+               channels=None, include_count=None):
+        if isinstance(channels, (tuple, list)):
+            channels = ','.join(channels)
+
+        if isinstance(include_count, bool):
+            include_count = int(include_count)
+
+        return self.post('usergroups.update', data={
+            'usergroup': usergroup,
+            'name': name,
+            'handle': handle,
+            'description': description,
+            'channels': channels,
+            'include_count': include_count,
+        })
+
+    def disable(self, usergroup, include_count=None):
+        if isinstance(include_count, bool):
+            include_count = int(include_count)
+
+        return self.post('usergroups.disable', data={
+            'usergroup': usergroup,
+            'include_count': include_count,
+        })
+
+    def enable(self, usergroup, include_count=None):
+        if isinstance(include_count, bool):
+            include_count = int(include_count)
+
+        return self.post('usergroups.enable', data={
+            'usergroup': usergroup,
+            'include_count': include_count,
+        })
+
+
+class DND(BaseAPI):
+    def team_info(self, users=None):
+        if isinstance(users, (tuple, list)):
+            users = ','.join(users)
+
+        return self.get('dnd.teamInfo', params={'users': users})
+
+    def set_snooze(self, num_minutes):
+        return self.post('dnd.setSnooze', data={'num_minutes': num_minutes})
+
+    def info(self, user=None):
+        return self.get('dnd.info', params={'user': user})
+
+    def end_dnd(self):
+        return self.post('dnd.endDnd')
+
+    def end_snooze(self):
+        return self.post('dnd.endSnooze')
+
+
 class OAuth(BaseAPI):
     def access(self, client_id, client_secret, code, redirect_uri=None):
         return self.post('oauth.access',
-                         params={
+                         data={
                              'client_id': client_id,
                              'client_secret': client_secret,
                              'code': code,
@@ -415,8 +674,9 @@ class OAuth(BaseAPI):
 
 
 class IncomingWebhook(object):
-    def __init__(self, url=None):
+    def __init__(self, url=None, timeout=DEFAULT_TIMEOUT):
         self.url = url
+        self.timeout = timeout
 
     def post(self, data):
         """
@@ -426,25 +686,33 @@ class IncomingWebhook(object):
         if not self.url:
             raise Error('URL for incoming webhook is undefined')
 
-        return requests.post(self.url, data=json.dumps(data))
+        return requests.post(self.url, data=json.dumps(data),
+                             timeout=self.timeout)
 
 
 class Slacker(object):
-    oauth = OAuth()
+    oauth = OAuth(timeout=DEFAULT_TIMEOUT)
 
-    def __init__(self, token, incoming_webhook_url=None):
-        self.im = IM(token=token)
-        self.api = API(token=token)
-        self.rtm = RTM(token=token)
-        self.auth = Auth(token=token)
-        self.chat = Chat(token=token)
-        self.team = Team(token=token)
-        self.users = Users(token=token)
-        self.files = Files(token=token)
-        self.stars = Stars(token=token)
-        self.emoji = Emoji(token=token)
-        self.search = Search(token=token)
-        self.groups = Groups(token=token)
-        self.channels = Channels(token=token)
-        self.presence = Presence(token=token)
-        self.incomingwebhook = IncomingWebhook(url=incoming_webhook_url)
+    def __init__(self, token, incoming_webhook_url=None,
+                 timeout=DEFAULT_TIMEOUT):
+        self.im = IM(token=token, timeout=timeout)
+        self.api = API(token=token, timeout=timeout)
+        self.dnd = DND(token=token, timeout=timeout)
+        self.rtm = RTM(token=token, timeout=timeout)
+        self.auth = Auth(token=token, timeout=timeout)
+        self.chat = Chat(token=token, timeout=timeout)
+        self.team = Team(token=token, timeout=timeout)
+        self.pins = Pins(token=token, timeout=timeout)
+        self.mpim = MPIM(token=token, timeout=timeout)
+        self.users = Users(token=token, timeout=timeout)
+        self.files = Files(token=token, timeout=timeout)
+        self.stars = Stars(token=token, timeout=timeout)
+        self.emoji = Emoji(token=token, timeout=timeout)
+        self.search = Search(token=token, timeout=timeout)
+        self.groups = Groups(token=token, timeout=timeout)
+        self.channels = Channels(token=token, timeout=timeout)
+        self.presence = Presence(token=token, timeout=timeout)
+        self.reactions = Reactions(token=token, timeout=timeout)
+        self.usergroups = UserGroups(token=token, timeout=timeout)
+        self.incomingwebhook = IncomingWebhook(url=incoming_webhook_url,
+                                               timeout=timeout)
